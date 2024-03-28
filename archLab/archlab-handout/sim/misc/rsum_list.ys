@@ -1,0 +1,26 @@
+# Gunnar Anderson 109720947
+
+# Recursive function to take the head of a linked list
+# and recusively sum the values
+
+rsum_list:
+    pushq %rbp                   # Save base pointer
+    movq %rsp, %rbp              # Update base pointer
+    pushq %rdi                   # Save %rdi
+    test %rdi, %rdi              # Check if ls is NULL
+    je BaseCase                  # If NULL, handle base case
+    movq (%rdi), %r8             # Load ls->val into %r8
+    addq %r8, %rax               # Add ls->val to result of recursive call
+    movq 8(%rdi), %rdi           # Load ls->next into %rdi
+    call rsum_list               # Recursive call with ls->next
+    popq %rdi                    # Restore %rdi
+    popq %rbp                    # Restore base pointer
+    ret                          # Return directly here
+
+BaseCase:
+    xor %rax, %rax               # Set %rax to 0
+    popq %rdi                    # Restore %rdi
+    popq %rbp                    # Restore base pointer
+    ret                          # Return
+
+#end rsum_list.ys

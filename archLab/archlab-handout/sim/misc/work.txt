@@ -1,0 +1,128 @@
+  .pos 0
+    irmovq stack, %rsp    # Initialize %rsp to the start of the stack area
+    call main             # Call the main function
+    subq %r8, %rsp        # Move %rsp the correct distance away to allocate space
+
+    halt                  # Stop execution
+
+
+
+# Main program or routine starts here
+main:
+    irmovq ele1, %rdi       # Load the address of ele1 (start of the list) into %rdi
+    call sum_list          # Test sum_list function
+    irmovq $0, %rax
+    irmovq ele1, %rdi       # Load the address of ele1 (start of the list) into %rdi
+    call rsum_list         # Test rsum_list function
+    irmovq $0, %rax
+
+    # Setup for copy_block function
+    irmovq ele1, %rdi       # Source block (ele1)
+    irmovq stack, %rsi      # Destination block (using stack space)
+    irmovq $3, %rdx         # Length of the block to copy (3 elements)
+    call copy_block        # Test copy_block function
+    
+    ret
+
+    halt
+    
+    
+# Registers:------------------------------------------------------------------
+# %rdi - list_ptr ls
+# %rax - return value (sum of the list)
+# Sample linked list
+.align 8
+ele1:
+    .quad 0x00a           # Value of ele1
+    .quad ele2            # Pointer to next element
+ele2:
+    .quad 0x0b0           # Value of ele2
+    .quad ele3            # Pointer to next element
+ele3:
+    .quad 0xc00           # Value of ele3
+    .quad 0               # Null pointer to indicate end of list
+
+.align 8
+# Source block-------------------------------------------------------------
+src:
+    .quad 0x00a
+    .quad 0x0b0
+    .quad 0xc00
+# Destination block
+dest:
+    .quad 0x111
+    .quad 0x222
+    .quad 0x333
+#-----------------------------------------------------------------------
+sum_list:
+    irmovq $0, %rax          # Initialize sum to 0
+    andq %rdi, %rdi          # Check if ls is NULL
+    je End                   # If ls is NULL, jump to end
+Loop:
+    mrmovq 0(%rdi), %r8      # Load ls->val into %r8
+    addq %r8, %rax           # Add ls->val to sum
+    mrmovq 8(%rdi), %rdi     # Load ls->next into %rdi
+    andq %rdi, %rdi          # Check if next is NULL
+    jne Loop                 # If not NULL, loop
+End:
+    ret              # Return sum
+
+#-----------------------------------------------------------------------------
+# Recursive functions in Y86-64 need to manage the stack for local variables and return address
+rsum_list:
+    pushq %rbp               # Save base pointer
+    rrmovq %rsp, %rbp        # Update base pointer
+    andq %rdi, %rdi          # Check if ls is NULL
+    je BaseCase              # If NULL, handle base case
+    mrmovq 0(%rdi), %r8      # Load ls->val into %r8
+    addq %r8, %rax           # Add ls->val to result of recursive call
+    mrmovq 8(%rdi), %rdi     # Load ls->next into %rdi
+    call rsum_list           # Recursive call with ls->next
+    popq %rbp                # Restore base pointer
+    ret                      # Return directly here
+
+BaseCase:
+    popq %rbp                # Restore base pointer
+    ret                      # Return
+
+
+# Registers:------------------------------------------------------------------------
+# %rdi - long *src
+# %rsi - long *dest
+# %rdx - long len
+# %rax - return value (XOR checksum)
+
+copy_block:
+    irmovq $0, %rax          # Initialize result to 0
+    andq %rdx, %rdx          # Check if len > 0
+    je EndCopy               # If len <= 0, end
+LoopCopy:
+    mrmovq 0(%rdi), %r8      # Load *src into %r8
+    rmmovq %r8, 0(%rsi)      # Store %r8 into *dest
+    xorq %r8, %rax           # XOR result with %r8
+    irmovq $8, %r10          # Set offset to 8 bytes
+    addq %r10, %rdi          # Increment src pointer
+    addq %r10, %rsi          # Increment dest pointer
+    irmovq $1, %r10          # Set decrement value to 1
+    subq %r10, %rdx          # Decrement len
+    jg LoopCopy              # If len > 0, loop
+EndCopy:
+    ret                      # Return XOR checksum
+
+
+# Define labels for any jump targets
+.LabelForJe:
+    # Destination for "je" instruction, adjust according to your logic
+    
+
+# Stack starts here and grows to lower addresses
+.pos 0x200
+stack:
+
+
+
+
+
+
+
+

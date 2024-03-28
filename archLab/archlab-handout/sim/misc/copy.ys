@@ -1,0 +1,33 @@
+# Gunnar Anderson 109720947
+
+# Takes a block of words from memory
+# Copies it to another part of memory
+# Calculates the XOR Checksum as it copies the values over
+# Returns checksum with %rax
+
+
+# %rdi - long *src
+# %rsi - long *dest
+# %rdx - long len
+# %rax - return value (XOR checksum)
+
+copy_block:
+    irmovq $0, %rax          # Initialize result to 0
+    andq %rdx, %rdx          # Check if len > 0
+    je EndCopy               # If len <= 0, end
+LoopCopy:
+    mrmovq 0(%rdi), %r8      # Load *src into %r8
+    rmmovq %r8, 0(%rsi)      # Store %r8 into *dest
+    xorq %r8, %rax           # XOR result with %r8
+    irmovq $8, %r10          # Set offset to 8 bytes
+    addq %r10, %rdi          # Increment src pointer
+    addq %r10, %rsi          # Increment dest pointer
+    irmovq $1, %r10          # Set decrement value to 1
+    subq %r10, %rdx          # Decrement len
+    jg LoopCopy              # If len > 0, loop
+
+EndCopy:
+    ret                      # Return XOR checksum
+
+
+#end checksum.ys

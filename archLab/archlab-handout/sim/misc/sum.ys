@@ -1,0 +1,32 @@
+# Gunnar Anderson 109720947
+
+# Iterate through linked list 
+# Return sum of all values
+
+sum_list:
+    pushq %rbp                # Save base pointer
+    rrmovq %rsp, %rbp         # Update base pointer
+    pushq %rdi                # Save %rdi, the pointer to the list, on the stack
+    pushq %rbx                # Save %rbx 
+    xorq %rax, %rax           # Initialize sum to 0
+
+    rrmovq %rdi, %r8          # Move %rdi to %r8
+    subq %r8, %r8             # Subtract %r8 from itself, result is zero if %rdi was zero
+    je End                    # If the result is zero, jump to End
+
+Loop:
+    mrmovq (%rdi), %r8        # Load ls->val into %r8
+    addq %r8, %rax            # Add ls->val to sum
+    mrmovq 8(%rdi), %rdi      # Load ls->next into %rdi
+
+    rrmovq %rdi, %r9          # Temporarily move %rdi to %r9 for the comparison
+    subq %r9, %r9             # Subtract %r9 from itself, result is zero if %rdi was zero
+    je End                    # If the result is zero, jump to End
+
+    jmp Loop                  # Continue loop if not zero
+
+End:
+    popq %rbx                 # Restore %rbx 
+    popq %rdi                 # Restore %rdi before returning
+    popq %rbp                 # Restore base pointer
+    ret#End sum_list.ys
