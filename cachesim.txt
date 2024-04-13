@@ -1,0 +1,276 @@
+/**
+ * Cache Simulator
+ *
+ * Author: Gunnar Anderson
+ * ID: 109720947
+ * User: ganders4
+ *
+ * This program is a cache simulator that takes a Valgrind memory trace as input                                                               ,
+ * simulates the hit/miss behavior of a cache memory on this trace, and outputs
+ * the total number of hits, misses, and evictions. The simulator is designed to
+ * help understand the effectiveness of different caching strategies and configurations.
+ * It supports simulating caches of varying sizes, associativities, and block sizes,
+ * allowing for a detailed analysis of cache behavior under different workloads.
+ *
+ * The program is invoked with command-line arguments to specify the cache configuration
+ * and the trace file to be simulated. It includes handling for 'L' (load), 'S'(store),
+ * and 'M' (modify) operations, accurately simulating how each would impact thestate
+ * of the cache. The verbose flag (-v) can be used to display detailed information about
+ * each memory access and how it affects the cache.
+ */
+
+#define _POSIX_C_SOURCE 200809L
+#include <stdio.h>
+#include <stdlib.h>
+#include <getopt.h>
+#include <string.h>
+#include <stdbool.h>
+#include "cachelab.h"
+
+typedef struct {
+    int s; // Number of set index bits
+    int E; // Number of lines per set
+    int b; // Number of block offset bits
+    char* trace_file; // Trace file path
+    bool help; // Help flag
+    bool verbose; // Verbose flag
+} SimulatorConfig;
+
+typedef struct {
+    int valid;
+    unsigned long tag;
+    int lru_counter;
+} CacheLine;
+
+typedef CacheLine* CacheSet;
+typedef CacheSet* Cache;
+
+typedef struct {
+    int hits;
+    int misses;
+    int evictions;
+} CacheStats;
+
+void parse_arguments(int argc, char* argv[], SimulatorConfig* config);
+void print_usage();
+void run_simulation(SimulatorConfig* config, CacheStats* stats, Cache* cache);
+void initialize_cache(Cache** cache, SimulatorConfig* config);
+void free_cache(Cache* cache, SimulatorConfig* config);
+void process_access(Cache* cache, SimulatorConfig* config, CacheStats* stats, char op, unsigned long address, int size);
+void update_lru(CacheSet set, int set_size, int accessed_index);
+int find_least_recently_used(CacheSet set, int set_size);
+unsigned long get_set_index(unsigned long address, SimulatorConfig* config);
+unsigned long get_tag(unsigned long address, SimulatorConfig* config);
+
+    int main(int argc, char* argv[]) {
+
+        SimulatorConfig config = {0, 0, 0, NULL, false, false};
+
+        CacheStats stats = {0, 0, 0};
+        Cache* cache = NULL;
+
+        parse_arguments(argc, argv, &config);
+        if (config.help) {
+            print_usage();
+            return 0;
+        }
+
+        initialize_cache(&cache, &config);
+        run_simulation(&config, &stats, cache);
+        free_cache(cache, &config);
+
+        printSummary(stats.hits, stats.misses, stats.evictions  );
+        return 0;
+    }
+
+void parse_arguments(int argc, char* argv[], SimulatorConfig* config) {
+    int opt;
+    while ((opt = getopt(argc, argv, "hvs:E:b:t:")) != -1) {
+        switch (opt) {
+            case 'h':
+                config->help = true;
+                break;
+            case 'v':
+                config->verbose = true;
+                break;
+            case 's':
+                config->s = atoi(optarg);
+                break;
+            case 'E':
+                config->E = atoi(optarg);
+                break;
+            case 'b':
+                config->b = atoi(optarg);
+                break;
+            case 't':
+                config->trace_file = strdup(optarg);
+                break;
+            default:
+                print_usage();
+                exit(EXIT_FAILURE);
+        }
+    }
+    if (config->s == 0 || config->E == 0 || config->b == 0 || config->trace_file== NULL) {
+        print_usage();
+        exit(EXIT_FAILURE);
+    }
+}
+void printSummary(int hits, int misses, int evictions) {
+    printf("\nHits:%d Misses:%d Evictions:%d\n", hits, misses, evictions);
+}
+
+void print_usage() {
+    printf("Usage: ./csim [-hv] -s <s> -E <E> -b <b> -t <tracefile>\n");
+    printf("  -h: Optional help flag that prints usage info\n");
+    printf("  -v: Optional verbose flag that displays trace info\n");
+    printf("  -s <s>: Number of set index bits (S = 2^s is the number of sets)\n");
+    printf("  -E <E>: Associativity (number of lines per set)\n");
+    printf("  -b <b>: Number of block bits (B = 2^b is the block size)\n");
+    printf("  -t <tracefile>: Name of the valgrind trace to replay\n");
+}
+
+void run_simulation(SimulatorConfig* config, CacheStats* stats, Cache* cache) {
+    FILE* trace_fp = fopen(config->trace_file, "r");
+    if (!trace_fp) {
+        fprintf(stderr, "Error opening trace file: %s\n", config->trace_file);
+        exit(EXIT_FAILURE);
+    }
+
+    char op;
+    unsigned long address;
+    int size;
+    int lineCount = 0; // Keep track of how many lines are processed
+
+    while (fscanf(trace_fp, " %c %lx,%d", &op, &address, &size) == 3) {
+        lineCount++;
+
+      
+
+        if (op != 'I') { // Process if it's not an instruction load
+            if (op == 'M') {   // For 'M' operation, simulate both load and store
+
+
+                if (config->verbose) {
+                    printf("\n%c %lx, %d ",op, address, size);
+                }
+
+                process_access(cache, config, stats, 'L', address, size); // Simulate the load part of the modify
+                process_access(cache, config, stats, 'S', address, size); // Simulate the store part of the modify
+                
+            } else {   // For 'L' and 'S' operations, process normally
+
+                if (config->verbose) {
+                    printf("\n%c %lx, %d  ", op, address, size);
+                }
+
+                    process_access(cache, config, stats, op, address, size);
+
+            }
+        } else {
+            if (config->verbose) {
+                puts("Ignoring 'I' operation.");
+            }
+        }
+    }
+
+
+    if (lineCount == 0) {
+        puts("No lines were processed. Please check the trace file format and content.");
+    }
+
+    fclose(trace_fp);
+}
+
+
+void initialize_cache(Cache** cache, SimulatorConfig* config) {
+    int num_sets = 1 << config->s;
+    *cache = malloc(num_sets * sizeof(CacheSet));
+    if (!*cache) {
+        fprintf(stderr, "Failed to allocate memory for cache\n");
+        exit(EXIT_FAILURE);
+    }
+
+    for (int i = 0; i < num_sets; i++) {
+        (*cache)[i] = calloc(config->E, sizeof(CacheLine));
+        if (!(*cache)[i]) {
+            fprintf(stderr, "Failed to allocate memory for cache lines\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+}
+
+void free_cache(Cache* cache, SimulatorConfig* config) {
+    int num_sets = 1 << config->s;
+    for (int i = 0; i < num_sets; i++) {
+        free(cache[i]);
+    }
+    free(cache);
+}
+
+void process_access(Cache* cache, SimulatorConfig* config, CacheStats* stats, char op, unsigned long address, int size) {
+    unsigned long set_index = get_set_index(address, config);
+    unsigned long tag = get_tag(address, config);
+    CacheSet set = cache[set_index];
+
+    bool hit = false;
+    int empty_index = -1;
+    int lru_index = find_least_recently_used(set, config->E);
+
+    for (int i = 0; i < config->E; i++) {
+        if (set[i].valid && set[i].tag == tag) {
+            stats->hits++;
+            set[i].lru_counter = 0; // Reset LRU counter
+            hit = true;
+            if (config->verbose) printf(" hit ");
+            break;
+        }
+        if (!set[i].valid && empty_index == -1) {
+            empty_index = i; // Save the first empty spot
+        }
+    }
+
+    if (!hit) {
+        stats->misses++;
+        if (config->verbose) printf(" miss ");
+        if (empty_index != -1) { // If there's an empty line in the set
+            set[empty_index].valid = 1;
+            set[empty_index].tag = tag;
+            set[empty_index].lru_counter = 0; // Reset LRU counter
+        } else { // Need to evict the LRU line
+            stats->evictions++;
+            if (config->verbose) printf(" eviction ");
+            set[lru_index].tag = tag;
+            set[lru_index].lru_counter = 0; // Reset LRU counter
+        }
+    }
+
+    update_lru(set, config->E, hit ? find_least_recently_used(set, config->E) :empty_index);
+}
+
+void update_lru(CacheSet set, int set_size, int accessed_index) {
+    for (int i = 0; i < set_size; i++) {
+        if (i != accessed_index) {
+            set[i].lru_counter++; // Increment all except the recently accessedone
+        }
+    }
+}
+
+int find_least_recently_used(CacheSet set, int set_size) {
+    int max_lru = 0;
+    int lru_index = 0;
+    for (int i = 0; i < set_size; i++) {
+        if (set[i].lru_counter > max_lru) {
+            max_lru = set[i].lru_counter;
+            lru_index = i;
+        }
+    }
+    return lru_index;
+}
+
+unsigned long get_set_index(unsigned long address, SimulatorConfig* config) {
+    return (address >> config->b) & ((1 << config->s) - 1);
+}
+
+unsigned long get_tag(unsigned long address, SimulatorConfig* config) {
+    return address >> (config->s + config->b);
+}
